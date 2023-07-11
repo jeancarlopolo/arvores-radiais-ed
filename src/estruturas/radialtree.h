@@ -1,12 +1,8 @@
 #ifndef _RADIAL_TREE__
 #define _RADIAL_TREE__
 
-#include "fila.h"
+#include "lista.h"
 #include <stdbool.h>
-#include <math.h>
-
-#define M_PI 3.14159265358979323846
-
 
 /*
  * Uma Arvore Radial e' uma arvore n-aria, espacial, nao balanceada.
@@ -51,87 +47,114 @@ typedef void *RadialTree;
 typedef void *Node;
 typedef void *Info;
 
-typedef bool (*FdentroDeRegiao)(Info i, double x1, double y1, double x2, double y2);
 /*
  * Uma funcao deste tipo deve retornar verdadeiro se a informacao i esta'
  * "dentro" da regiao retangular delimitada pelos pontos opostos (x1,y1) e (x2,y2).
  * Retorna falso, caso contrario.
  */
+typedef bool (*FdentroDeRegiao)(Info i, double x1, double y1, double x2, double y2);
 
-typedef bool (*FpontoInternoAInfo)(Info i, double x, double y);
 /*
  * Uma funcao deste tipo deve retornar verdadeiro se o ponto (x,y)
  * deva ser considerado
  * "interno" da informacao i.
  */
+typedef bool (*FpontoInternoAInfo)(Info i, double x, double y);
 
-typedef void (*FvisitaNo)(Info i, double x, double y, void *aux);
 /*
  * Processa a informacao i associada a um no' da arvore, cuja ancora
  * e' o ponto (x,y). O parametro aux aponta para conjunto de dados
  * (provavelmente um registro) que sao compartilhados entre as
  * sucessivas invocacoes a esta funcao.
  */
+typedef void (*FvisitaNo)(Info i, double x, double y, void *aux);
 
-RadialTree newRadialTree(int numSetores, double fd);
+/*
+ * Verifica se a informacao i associada a um no' da arvore, cuja ancora
+ * e' o ponto (x,y) e' a informacao procurada. Retorna verdadeiro, em caso
+ * afirmativo; falso, caso contrário. O parametro aux aponta para conjunto de dados
+ * (provavelmente um registro) que sao compartilhados entre as
+ * sucessivas invocacoes a esta funcao, incluindo (provavelmente) uma chave de busca.
+ */
+typedef bool (*FsearchNo)(Info i, double x, double y, void *aux);
+
 /*
  * Retorna uma arvore Radial vazia de numSetores setores e com fator
  * de degradacao fd.
  *    0 <= fd < 1.0
  */
+RadialTree newRadialTree(int numSetores, double fd);
 
-Node insertRadialT(RadialTree t, double x, double y, Info i);
 /*
  * Insere a informacao i, associada 'a ancora (x,y) na arvore t.
  * Retorna um indicador para o no' inserido.
  */
+Node insertRadialT(RadialTree t, double x, double y, Info i);
 
-Node getNodeRadialT(RadialTree t, double x, double y, double epsilon);
 /*
  * Retorna o no' cuja ancora seja o ponto (x,y). Aceita-se uma pequena discrepancia
  * entre a coordenada da ancora (anc.x,anc.y) e o ponto (x,y) de epsilon unidades.
  * Ou seja, |anc.x - x | < epsilon e |anc.y - y | < epsilon.
  * Retorna NULL caso nao tenha encontrado o no'.
  */
+Node getNodeRadialT(RadialTree t, double x, double y, double epsilon);
 
-void removeNoRadialT(RadialTree t, Node n);
 /*
  * Marca como removido o no' n. Caso, apos a remocao, o fator de degradacao
  * superar o limiar definido na criacao, a arvore e' recriada sem os nos delidos.
  */
+void removeNoRadialT(RadialTree t, Node n);
 
-Info getInfoRadialT(RadialTree t, Node n);
 /* Retorna a informacao associada ao no' n */
+Info getInfoRadialT(RadialTree t, Node n);
 
-bool getNodesDentroRegiaoRadialT(RadialTree t, double x1, double y1, double x2, double y2, Lista L);
 /* Insere na lista L os nos (Node) da arvore t cujas ancoras estao dentro da regiao delimitada pelos
    pontos (x1,y1) e (x2,y2).
    Retorna falso, caso nao existam nos dentro da regiao; verdadeiro, caso contrario.
  */
+bool getNodesDentroRegiaoRadialT(RadialTree t, double x1, double y1, double x2, double y2, Lista L);
 
-bool getInfosDentroRegiaoRadialT(RadialTree t, double x1, double y1, double x2, double y2,
-                                 FdentroDeRegiao f, Lista L);
 /* Insere na lista L os nos cujas respectivas informacoes associadas estao dentro da regiao
    delimitada pelos pontos (x1,y1) e (x2,y2). A funcao f e' usada para determinar se uma informacao
    armazenada na arvore esta' dentro da regiao.
    Retorna falso caso nao existam informacoes internas; verdadeiro, caso contrario.
  */
+bool getInfosDentroRegiaoRadialT(RadialTree t, double x1, double y1, double x2, double y2,
+                                 FdentroDeRegiao f, Lista L);
 
-bool getInfosAtingidoPontoRadialT(RadialTree t, double x, double y, FpontoInternoAInfo f, Lista L);
 /* Insere na lista L  os nos para os quais o ponto (x,y) possa ser considerado
   interno 'as  informacoes associadas ao no'. A funcao f e' invocada para determinar
   se o ponto (x,y) e' interno a uma informacao especifica.
   Retorna falso caso nao existam informacoes internas; verdadeiro, caso contrario.
  */
+bool getInfosAtingidoPontoRadialT(RadialTree t, double x, double y, FpontoInternoAInfo f, Lista L);
 
-void visitaProfundidadeRadialT(RadialTree t, FvisitaNo f, void *aux);
 /* Percorre a arvore em profundidade. Invoca a funcao f em cada no visitado.
    O apontador aux e' parametro em cada invocacao de f; assim alguns
    dados podem ser compartilhados entre as diversas invocacoes de f.
  */
+void visitaProfundidadeRadialT(RadialTree t, FvisitaNo f, void *aux);
 
-void visitaLarguraRadialT(RadialTree t, FvisitaNo f, void *aux);
 /* Similar a visitaProfundidadeRadialT, porem, faz o percurso em largura.
  */
+void visitaLarguraRadialT(RadialTree t, FvisitaNo f, void *aux);
+
+/* Procura o no' da arvore que contenha um dado especifico.
+   Visita cada no' da arvore e invoca a funcao f. A funcao f
+   retornara' verdadeiro se o no' contem o dado procurado.
+   Neste caso, retorna o no' encontrado. Caso a busca falhe,
+   retorna NULL.
+ */
+Node procuraNoRadialT(RadialTree t, FsearchNo f, void *aux);
+
+/* Gera representacao da arvore no arquivo fn, usando a Dot Language
+   (ver https://graphviz.org/). Retorna falso, caso o arquivo nao possa
+   ser criado (para escrita); true, caso contrario)
+*/
+bool printDotRadialTree(RadialTree t, char *fn);
+
+/* Libera a memoria usada pela arvore t.
+ */
+void killRadialTree(RadialTree t);
 
 #endif

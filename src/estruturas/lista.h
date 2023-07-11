@@ -1,5 +1,5 @@
-#ifndef _LISTA_H
-#define _LISTA_H
+#ifndef LISTA_H
+#define LISTA_H
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -98,8 +98,8 @@ indicado por p. Se p for o primeiro elemento da lista, retorna NIL.
 p deve indicar um elemento existente em L. */
 Posic getPreviousLst(Posic p);
 
-/** Libera toda memoria alocada pela lista. */
-void killLst(Lista L);
+/** Libera toda memoria alocada pela lista. Se killItem != NULL, aplica a funcao killItem em cada item da lista */
+void killLst(Lista L, void (*killItem)(Item));
 
 /**
  ** Iteradores

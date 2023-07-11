@@ -1,6 +1,4 @@
 #include "lista.h"
-#include <stdio.h>
-#include <stdlib.h>
 
 struct elemento
 {
@@ -212,14 +210,16 @@ Posic getPreviousLst(Posic p)
     return elem->anterior;
 }
 
-void killLst(Lista L)
+void killLst(Lista L, void (*killItem)(Item))
 {
     if (L == NULL)
         return;
-
+    Item info;
     while (!isEmptyLst(L))
     {
-        popLst(L);
+        info = popLst(L);
+        if (killItem != NULL)
+            killItem(info);
     }
     free(L);
 }

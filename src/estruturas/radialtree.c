@@ -1,255 +1,311 @@
 #include "radialtree.h"
+#include <math.h>
+#include "fila.h"
+#include "../formas/tipos.h"
+#include "../formas/circulo.h"
+#include "../formas/retangulo.h"
+#include "../formas/linha.h"
+#include "../formas/texto.h"
 
-struct radialtree;
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif // !M_PI
+
+double xCentro, yCentro;
 
 struct node
 {
-    struct radialtree *arvorePertencente;
-    Item item;
-    double x;
-    double y;
-    bool deletado;
-    struct node *pai;
+    Info info;
+    double x, y;
     struct node **filhos;
+    bool removido;
 };
 
-struct radialtree
+struct arvore
 {
+    int numSetores;
+    double fd;
+    int removidos;
+    int total;
     struct node *raiz;
-    double fdAtual; // removidos / total
-    double fdMax;
-    int nFilhos;
-    int nNodes;
-    int nRemovidos;
+};
+
+struct polar
+{
+    double r, theta;
+};
+
+struct menorRetangulo
+{
+    double x1, y1, x2, y2;
+};
+
+struct vetorNos
+{
+    struct node **nos;
+    int indice;
 };
 
 RadialTree newRadialTree(int numSetores, double fd)
 {
-    struct radialtree *arvore = (struct radialtree *)malloc(sizeof(struct radialtree));
-    arvore->raiz = NULL;
-    arvore->fdAtual = 0;
-    fd = fd > 0 ? fd : 0;    // fd deve ser maior que 0
-    fd = fd < 1 ? fd : 0.75; // fd deve ser menor que 1
-    arvore->fdMax = fd;
-    arvore->nFilhos = numSetores;
-    arvore->nNodes = 0;
-    return arvore;
+    struct arvore *t = malloc(sizeof(struct arvore));
+    t->numSetores = numSetores;
+    fd = fd < 0 ? 0 : fd;
+    fd = fd > 1 ? 0.9 : fd;
+    t->fd = fd;
+    t->removidos = 0;
+    t->total = 0;
+    t->raiz = NULL;
+    return t;
 }
 
-int getNumSetores(RadialTree T)
+int checkSetor(double xCentro, double yCentro, double x, double y, int numSetores)
 {
-    struct radialtree *arvore = (struct radialtree *)T;
-    return arvore->nFilhos;
-}
-
-void visitaProfundidadeRadialT(RadialTree t, FvisitaNo f, void *aux)
-{
-    struct radialtree *arvore = (struct radialtree *)t;
-    struct node *node = arvore->raiz;
-    if (node != NULL)
-    {
-        f(node->item, node->x, node->y, aux);
-        for (int i = 0; i < arvore->nFilhos; i++)
-        {
-            if (node->filhos[i] != NULL)
-                visitaProfundidadeRadialT(node->filhos[i], f, aux);
-        }
-    }
-}
-
-void visitaLarguraRadialT(RadialTree t, FvisitaNo f, void *aux)
-{
-    struct radialtree *arvore = (struct radialtree *)t;
-    struct node *node = arvore->raiz;
-    if (node != NULL)
-    {
-        Fila fila = criaFila();
-        enqueue(fila, node);
-        while (!filaVazia(fila))
-        {
-            node = (struct node *)dequeue(fila);
-            f(node->item, node->x, node->y, aux);
-            for (int i = 0; i < arvore->nFilhos; i++)
-            {
-                if (node->filhos[i] != NULL)
-                    enqueue(fila, node->filhos[i]);
-            }
-        }
-    }
-}
-
-int checkSetor(Node n, double x, double y)
-{
-    struct node *node = (struct node *)n;
-    // Calcula a inclinação da reta entre o nó e o ponto (x,y)
-    double inclinacao = atan2(y - node->y, x - node->x) * 180 / M_PI;
-    if (inclinacao < 0)
-    {
-        inclinacao += 360;
-    }
-    // Calcula o número do setor a partir da inclinação
-    int setor = (int)(inclinacao / 360 * node->arvorePertencente->nFilhos);
-    // Retorna o número do setor
+    double angulo = atan2(y - yCentro, x - xCentro);
+    angulo = angulo < 0 ? angulo + 2 * M_PI : angulo;
+    int setor = (int)(angulo / (2 * M_PI / numSetores));
     return setor;
-}
-
-double calculaFd(RadialTree t)
-{
-    struct radialtree *arvore = (struct radialtree *)t;
-    return arvore->nRemovidos / arvore->nNodes;
-}
-
-Node _criaNode(double x, double y, Info i, RadialTree t)
-{
-    struct node *node = (struct node *)malloc(sizeof(struct node));
-    struct radialtree *arvore = (struct radialtree *)t;
-    node->item = i;
-    node->x = x;
-    node->y = y;
-    node->deletado = false;
-    node->arvorePertencente = t;
-    node->pai = NULL;
-    node->filhos = (struct node **)malloc(sizeof(struct node *) * arvore->nFilhos);
-    for (int i = 0; i < arvore->nFilhos; i++)
-    {
-        node->filhos[i] = NULL;
-    }
-    return node;
-}
-
-Node _insertRecursivo(Node n, double x, double y, Info i)
-{
-    struct node *node = (struct node *)n;
-    int setor = checkSetor(node, x, y);
-    if (node->filhos[setor] == NULL)
-    {
-        node->filhos[setor] = _criaNode(x, y, i, node->arvorePertencente);
-        node->filhos[setor]->pai = node;
-        return node->filhos[setor];
-    }
-    else
-    {
-        return _insertRecursivo(node->filhos[setor], x, y, i);
-    }
 }
 
 Node insertRadialT(RadialTree t, double x, double y, Info i)
 {
-    struct radialtree *arvore = (struct radialtree *)t;
-    struct node *node = (struct node *)malloc(sizeof(struct node));
-    if (arvore->raiz == NULL)
+    struct arvore *arv = t;
+    struct node *novo = malloc(sizeof(struct node));
+    novo->info = i;
+    novo->x = x;
+    novo->y = y;
+    novo->removido = false;
+    novo->filhos = calloc(arv->numSetores, sizeof(struct node));
+    if (arv->raiz == NULL)
     {
-        arvore->raiz = node;
+        arv->raiz = novo;
+        return novo;
     }
-    else
+    struct node *aux = arv->raiz;
+    while (1)
     {
-        _insertRecursivo(arvore->raiz, x, y, i);
+        int setor = checkSetor(aux->x, aux->y, x, y, arv->numSetores);
+        if (aux->filhos[setor] == NULL)
+            break;
+        aux = aux->filhos[setor];
     }
-    arvore->nNodes++;
-    return node;
-}
-
-Node _getRecursivo(Node n, double x, double y, double epsilon)
-{
-    struct node *node = (struct node *)n;
-    if (node == NULL)
-    {
-        return NULL;
-    }
-    if (x >= node->x - epsilon && x <= node->x + epsilon && y >= node->y - epsilon && y <= node->y + epsilon)
-    {
-        return node;
-    }
-    else
-    {
-        int setor = checkSetor(node, x, y);
-        return _getRecursivo(node->filhos[setor], x, y, epsilon);
-    }
+    int setor = checkSetor(aux->x, aux->y, x, y, arv->numSetores);
+    aux->filhos[setor] = novo;
+    arv->total++;
+    return novo;
 }
 
 Node getNodeRadialT(RadialTree t, double x, double y, double epsilon)
 {
-    struct radialtree *arvore = (struct radialtree *)t;
-    return _getRecursivo(arvore->raiz, x, y, epsilon);
+    struct arvore *arv = t;
+    struct node *aux = arv->raiz;
+    while (aux != NULL)
+    {
+        if (fabs(aux->x - x) < epsilon && fabs(aux->y - y) < epsilon)
+            return aux == NULL || aux->removido ? NULL : aux;
+        int setor = checkSetor(aux->x, aux->y, x, y, arv->numSetores);
+        aux = aux->filhos[setor];
+    }
+    return aux;
 }
 
-void _transferePraArvoreRecursivo(struct radialtree *old, struct radialtree *nova, Node n)
+// funçao fvisitano para achar o menor retângulo que contém todos os pontos não removidos
+void acharMenor(Info i, double x, double y, void *aux)
 {
-    struct node *node = (struct node *)n;
-    if (node != NULL)
+    struct menorRetangulo *mr = aux;
+    struct node *n = i;
+    if (x < mr->x1)
+        mr->x1 = x;
+    if (x > mr->x2)
+        mr->x2 = x;
+    if (y < mr->y1)
+        mr->y1 = y;
+    if (y > mr->y2)
+        mr->y2 = y;
+}
+
+// funçao fvisitano para colocar todos os elementos não removidos em um vetor
+void colocarNoVetor(Info i, double x, double y, void *aux)
+{
+    struct vetorNos *vn = aux;
+    struct node *n = i;
+    vn->nos[vn->indice] = n;
+    vn->indice++;
+}
+
+// função de comparação para o qsort (ordem crescente de distância do centro)
+int comparaNode(const void *a, const void *b)
+{
+    struct node *n1 = *(struct node **)a;
+    struct node *n2 = *(struct node **)b;
+    double d1 = sqrt(pow(n1->x - xCentro, 2) + pow(n1->y - yCentro, 2));
+    double d2 = sqrt(pow(n2->x - xCentro, 2) + pow(n2->y - yCentro, 2));
+    if (d1 < d2)
+        return -1;
+    if (d1 > d2)
+        return 1;
+    return 0;
+}
+
+void _reorganizaRadialT(RadialTree t)
+{
+    // acha o menor retângulo que contém todos os pontos não removidos
+    struct arvore *arv = t;
+    struct node *aux = arv->raiz;
+    struct menorRetangulo *mr = malloc(sizeof(struct menorRetangulo));
+    visitaProfundidadeRadialT(t, acharMenor, mr);
+    // acha o centro do menor retângulo
+    xCentro = (mr->x1 + mr->x2) / 2;
+    yCentro = (mr->y1 + mr->y2) / 2;
+    free(mr);
+    // coloca todos os elementos não removidos em um vetor
+    struct vetorNos *vn = malloc(sizeof(struct vetorNos));
+    vn->nos = malloc(sizeof(struct node) * arv->total);
+    vn->indice = 0;
+    visitaProfundidadeRadialT(t, colocarNoVetor, vn);
+    qsort(vn->nos, vn->indice, sizeof(struct node), comparaNode);
+    struct arvore *novaArvore = newRadialTree(arv->numSetores, arv->fd);
+    for (int i = 0; i < vn->indice; i++)
     {
-        if (!node->deletado)
-        {
-            insertRadialT(nova, node->x, node->y, node->item);
-        }
-        for (int i = 0; i < old->nFilhos; i++)
-        {
-            if (node->filhos[i] != NULL)
-                _transferePraArvoreRecursivo(old, nova, node->filhos[i]);
-        }
-        free(node);
+        struct node *n = vn->nos[i];
+        insertRadialT(novaArvore, n->x, n->y, n->info);
     }
+    free(vn->nos);
+    t = novaArvore;
+    killRadialTree(arv);
 }
 
 void removeNoRadialT(RadialTree t, Node n)
 {
-    struct radialtree *arvore = (struct radialtree *)t;
-    struct node *node = (struct node *)n;
-    node = (struct node *)_getRecursivo(arvore->raiz, node->x, node->y, 0.01);
-    if (node != NULL)
-    {
-        node->deletado = true;
-        arvore->nRemovidos++;
-        arvore->fdAtual = calculaFd(t);
-        if (arvore->fdAtual > arvore->fdMax)
-        {
-            struct radialtree *novaArvore = newRadialTree(arvore->nFilhos, arvore->fdMax);
-            _transferePraArvoreRecursivo(arvore, novaArvore, arvore->raiz);
-            arvore->raiz = novaArvore->raiz;
-            arvore->nNodes = novaArvore->nNodes;
-            arvore->nRemovidos = novaArvore->nRemovidos;
-            arvore->fdAtual = 0;
-            free(novaArvore);
-        }
-    }
+    struct arvore *arv = t;
+    struct node *aux = n;
+    aux->removido = true;
+    arv->removidos++;
+    if (arv->removidos / arv->total > arv->fd)
+        _reorganizaRadialT(t);
 }
 
 Info getInfoRadialT(RadialTree t, Node n)
 {
-    struct node *node = (struct node *)n;
-    return node->item;
+    struct node *aux = n;
+    return aux->info;
+}
+
+bool checkLinhaLinha(double x1, double y1, double x2, double y2,
+                     double x3, double y3, double x4, double y4)
+{
+    // Verifica se a linha intersecta a linha utilizando o algoritmo de segmentos de reta
+    double dx12 = x2 - x1;
+    double dy12 = y2 - y1;
+    double dx34 = x4 - x3;
+    double dy34 = y4 - y3;
+    double denominator = (dy12 * dx34 - dx12 * dy34);
+    if (denominator == 0)
+        return false;
+    double dx31 = x1 - x3;
+    double dy31 = y1 - y3;
+    double numerator1 = (dy12 * dx31 - dx12 * dy31);
+    double numerator2 = (dy34 * dx31 - dx34 * dy31);
+    double mu1 = numerator1 / denominator;
+    double mu2 = numerator2 / denominator;
+    return (mu1 >= 0 && mu1 <= 1) && (mu2 >= 0 && mu2 <= 1);
+}
+
+bool _nodesRegiaoRecursivo(struct node *n, double x1, double y1, double x2, double y2, Lista L, int numSetores)
+{
+    bool achou = false;
+    if (n->x >= x1 && n->x <= x2 && n->y >= y1 && n->y <= y2)
+    {
+        if (!(n->removido))
+        {
+            insertLst(L, n);
+            achou = true;
+        }
+    }
+    int setor1 = checkSetor(x1, y1, n->x, n->y, numSetores);
+    int setor2 = checkSetor(x2, y1, n->x, n->y, numSetores);
+    int setor3 = checkSetor(x1, y2, n->x, n->y, numSetores);
+    int setor4 = checkSetor(x2, y2, n->x, n->y, numSetores);
+
+    // calcula se algum lado do retangulo intercepta o setor
+    for (int i = 0; i < numSetores; i++)
+    {
+        bool intersecta = false;
+        struct polar setorPolar; // reta do setor em coordenadas polares
+        setorPolar.r = 3000;     // valor arbitrario gambiarra rsrsrs
+        setorPolar.theta = (360 / numSetores) * i;
+        // transforma a reta do setor em coordenadas cartesianas
+        double xReta = setorPolar.r * cos(setorPolar.theta);
+        double yReta = setorPolar.r * sin(setorPolar.theta);
+        // verifica se a reta do setor intercepta algum lado do retangulo
+        intersecta = checkLinhaLinha(x1, y1, x2, y1, n->x, n->y, xReta, yReta) ||
+                     checkLinhaLinha(x2, y1, x2, y2, n->x, n->y, xReta, yReta) ||
+                     checkLinhaLinha(x2, y2, x1, y2, n->x, n->y, xReta, yReta) ||
+                     checkLinhaLinha(x1, y2, x1, y1, n->x, n->y, xReta, yReta);
+        bool dentro = false;
+        // verifica se algum vertice do retangulo esta dentro do setor
+        if (setor1 == i || setor2 == i || setor3 == i || setor4 == i)
+            dentro = true;
+        // se não intercepta e não esta dentro, vai pro proximo setor
+        if (!intersecta && !dentro)
+            continue;
+        if (n->filhos[i] == NULL)
+            continue;
+        if (n->filhos[i]->info != NULL)
+            achou = _nodesRegiaoRecursivo(n->filhos[i], x1, y1, x2, y2, L, numSetores) || achou;
+    }
+    return achou;
 }
 
 bool getNodesDentroRegiaoRadialT(RadialTree t, double x1, double y1, double x2, double y2, Lista L)
 {
-    struct radialtree *arvore = (struct radialtree *)t;
-    struct node *node = (struct node *)arvore->raiz;
+    struct arvore *arv = t;
+    return _nodesRegiaoRecursivo(arv->raiz, x1, y1, x2, y2, L, arv->numSetores);
+}
+
+bool _infosRegiaoRecursivo(struct node *n, double x1, double y1, double x2, double y2,
+                           FdentroDeRegiao f, Lista L, int numSetores)
+{
     bool achou = false;
-    if (node != NULL)
+    if (f(n->info, x1, y1, x2, y2))
     {
-        if (node->x >= x1 && node->x <= x2 && node->y >= y1 && node->y <= y2)
+        if (!(n->removido))
         {
-            insertLst(L, node->item);
+            insertLst(L, n->info);
             achou = true;
         }
-        double anguloinicial = atan2(y1 - node->y, x1 - node->x) * 180 / M_PI;
-        double angulofinal = atan2(y2 - node->y, x2 - node->x) * 180 / M_PI;
-        double incremento = 360 / arvore->nFilhos;
-        for (int i = 0; i < arvore->nFilhos; i++)
-        {
-            double anguloFilho = incremento * i;
-            if (anguloFilho >= anguloinicial && anguloFilho <= angulofinal) // só entra se o retangulo de busca estiver dentro do setor
-            {
-                achou = achou || getNodesDentroRegiaoRadialT(t, x1, y1, x2, y2, L);
-            }
-            {
-                achou = achou || getNodesDentroRegiaoRadialT(t, x1, y1, x2, y2, L);
-            }
-            if (anguloFilho >= angulofinal && anguloFilho <= anguloinicial)
-            {
-                achou = achou || getNodesDentroRegiaoRadialT(t, x1, y1, x2, y2, L);
-            }
-        }
+    }
+    int setor1 = checkSetor(x1, y1, n->x, n->y, numSetores);
+    int setor2 = checkSetor(x2, y1, n->x, n->y, numSetores);
+    int setor3 = checkSetor(x1, y2, n->x, n->y, numSetores);
+    int setor4 = checkSetor(x2, y2, n->x, n->y, numSetores);
+
+    // calcula se algum lado do retangulo intercepta o setor
+    for (int i = 0; i < numSetores; i++)
+    {
+        bool intersecta = false;
+        struct polar setorPolar; // reta do setor em coordenadas polares
+        setorPolar.r = 3000;     // valor arbitrario gambiarra rsrsrs
+        setorPolar.theta = (360 / numSetores) * i;
+        // transforma a reta do setor em coordenadas cartesianas
+        double xReta = setorPolar.r * cos(setorPolar.theta);
+        double yReta = setorPolar.r * sin(setorPolar.theta);
+        // verifica se a reta do setor intercepta algum lado do retangulo
+        intersecta = checkLinhaLinha(x1, y1, x2, y1, n->x, n->y, xReta, yReta) ||
+                     checkLinhaLinha(x2, y1, x2, y2, n->x, n->y, xReta, yReta) ||
+                     checkLinhaLinha(x2, y2, x1, y2, n->x, n->y, xReta, yReta) ||
+                     checkLinhaLinha(x1, y2, x1, y1, n->x, n->y, xReta, yReta);
+        bool dentro = false;
+        // verifica se algum vertice do retangulo esta dentro do setor
+        if (setor1 == i || setor2 == i || setor3 == i || setor4 == i)
+            dentro = true;
+        // se não intercepta e não esta dentro, vai pro proximo setor
+        if (!intersecta && !dentro)
+            continue;
+        if (n->filhos[i] == NULL)
+            continue;
+        if (n->filhos[i]->info != NULL)
+            achou = _nodesRegiaoRecursivo(n->filhos[i], x1, y1, x2, y2, L, numSetores) || achou;
     }
     return achou;
 }
@@ -257,66 +313,163 @@ bool getNodesDentroRegiaoRadialT(RadialTree t, double x1, double y1, double x2, 
 bool getInfosDentroRegiaoRadialT(RadialTree t, double x1, double y1, double x2, double y2,
                                  FdentroDeRegiao f, Lista L)
 {
-    struct radialtree *arvore = (struct radialtree *)t;
-    struct node *node = (struct node *)arvore->raiz;
+    struct arvore *arv = t;
+    return _infosRegiaoRecursivo(arv->raiz, x1, y1, x2, y2, f, L, arv->numSetores);
+}
+
+bool _infosPontoRecursivo(struct node *n, double x, double y, FpontoInternoAInfo f, Lista L, int numSetores)
+{
     bool achou = false;
-    if (node != NULL)
+    if (f(n->info, x, y))
     {
-        if (f(node->item, x1, y1, x2, y2))
+        if (!(n->removido))
         {
+            insertLst(L, n->info);
             achou = true;
-            insertLst(L, node->item);
         }
-        double anguloinicial = atan2(y1 - node->y, x1 - node->x) * 180 / M_PI;
-        double angulofinal = atan2(y2 - node->y, x2 - node->x) * 180 / M_PI;
-        double incremento = 360 / arvore->nFilhos;
-        for (int i = 0; i < arvore->nFilhos; i++)
-        {
-            double anguloFilho = incremento * i;
-            if (anguloFilho >= anguloinicial && anguloFilho <= angulofinal) // só entra se o retangulo de busca estiver dentro do setor
-            {
-                achou = achou || getInfosDentroRegiaoRadialT(t, x1, y1, x2, y2, f, L);
-            }
-            {
-                achou = achou || getInfosDentroRegiaoRadialT(t, x1, y1, x2, y2, f, L);
-            }
-            if (anguloFilho >= angulofinal && anguloFilho <= anguloinicial)
-            {
-                achou = achou || getInfosDentroRegiaoRadialT(t, x1, y1, x2, y2, f, L);
-            }
-        }
+    }
+    // não faço ideia de como podar a busca desse
+    // pode ter um retângulão que engloba tudo no setor 8952389532 e o ponto no setor 2 e é pra pegar
+    // genuinamente nao tem como podar a busca desse sem colocar um monte de função específica das formas
+
+    for (int i = 0; i < numSetores; i++)
+    {
+        if (n->filhos[i] == NULL)
+            continue;
+        if (n->filhos[i]->info != NULL)
+            achou = _infosPontoRecursivo(n->filhos[i], x, y, f, L, numSetores) || achou;
     }
     return achou;
 }
 
 bool getInfosAtingidoPontoRadialT(RadialTree t, double x, double y, FpontoInternoAInfo f, Lista L)
 {
-    struct radialtree *arvore = (struct radialtree *)t;
-    struct node *node = (struct node *)arvore->raiz;
-    bool achou = false;
-    if (node != NULL)
+    struct arvore *arv = t;
+    return _infosPontoRecursivo(arv->raiz, x, y, f, L, arv->numSetores);
+}
+
+void _visitaProfundidadeRecursivo(struct node *n, FvisitaNo f, void *aux, int numSetores)
+{
+    if (!n->removido)
+        f(n->info, n->x, n->y, aux);
+    for (int i = 0; i < numSetores; i++)
     {
-        if (f(node->item, x, y))
+        if (n->filhos[i] != NULL)
+            if (n->filhos[i]->info != NULL)
+                _visitaProfundidadeRecursivo(n->filhos[i], f, aux, numSetores);
+    }
+}
+
+void visitaProfundidadeRadialT(RadialTree t, FvisitaNo f, void *aux)
+{
+    struct arvore *arv = t;
+    _visitaProfundidadeRecursivo(arv->raiz, f, aux, arv->numSetores);
+}
+
+void visitaLarguraRadialT(RadialTree t, FvisitaNo f, void *aux)
+{
+    struct arvore *arv = t;
+    Fila fila = criaFila();
+    enqueue(fila, arv->raiz);
+    while (!filaVazia(fila))
+    {
+        struct node *n = dequeue(fila);
+        if (!n->removido)
+            f(n->info, n->x, n->y, aux);
+        for (int i = 0; i < arv->numSetores; i++)
         {
-            achou = true;
-            insertLst(L, node->item);
-        }
-        double incremento = 360 / arvore->nFilhos;
-        for (int i = 0; i < arvore->nFilhos; i++)
-        {
-            double anguloFilho = incremento * i;
-            double anguloPonto = atan2(y - node->y, x - node->x) * 180 / M_PI;
-            if (anguloPonto < 0)
-            {
-                anguloPonto += 360;
-            }
-            int setor = (int)anguloPonto / incremento;
-            if (setor == i)
-            {
-                achou = achou || getInfosAtingidoPontoRadialT(t, x, y, f, L);
-            }
-        
+            if (n->filhos[i] != NULL)
+                if (n->filhos[i]->info != NULL)
+                    enqueue(fila, n->filhos[i]);
         }
     }
-    return achou;
+}
+
+Node procuraNoRadialT(RadialTree t, FsearchNo f, void *aux)
+{
+    struct arvore *arv = t;
+    Fila fila = criaFila();
+    enqueue(fila, arv->raiz);
+    while (!filaVazia(fila))
+    {
+        struct node *n = dequeue(fila);
+        if (f(n->info, n->x, n->y, aux))
+            return n;
+        for (int i = 0; i < arv->numSetores; i++)
+        {
+            if (n->filhos[i] != NULL)
+                if (n->filhos[i]->info != NULL)
+                    enqueue(fila, n->filhos[i]);
+        }
+    }
+    return NULL;
+}
+
+void _printDotRecursivo(FILE *arq, struct node *n, int numSetores)
+{
+    char *corp, *corb;
+    switch (getTipoForma(n->info))
+    {
+    case RETANGULO:
+        corp = getRetanguloCorPreenchimento(n->info);
+        corb = getRetanguloCorBorda(n->info);
+        break;
+    case CIRCULO:
+        corp = getCirculoCorp(n->info);
+        corb = getCirculoCorb(n->info);
+        break;
+    case TEXTO:
+        corp = getTextoCorPreenchimento(n->info);
+        corb = getTextoCorBorda(n->info);
+        break;
+    case LINHA:
+        corp = getLinhaCor(n->info);
+        corb = getLinhaCor(n->info);
+        break;
+    }
+    for (int i = 0; i < numSetores; i++)
+    {
+        fprintf(arq, "%d", getIdForma(n->info));
+        fprintf(arq, " [label=\"%d", getIdForma(n->info));
+        fprintf(arq, "\", style = \"filled");
+        fprintf(arq, "\", color = \"%s", corb);
+        fprintf(arq, "\", fillcolor = \"%s", corp);
+        if (strcmp(corp, "black") == 0)
+            fprintf(arq, "\", fontcolor = \"white");
+        fprintf(arq, "\"];\n");
+        if (n->filhos[i] != NULL)
+        {
+            fprintf(arq, "%d", getIdForma(n->info));
+            fprintf(arq, " -> ");
+            fprintf(arq, "%d", getIdForma(n->filhos[i]->info));
+            fprintf(arq, " [label=\"%d", i);
+            fprintf(arq, "\"]");
+            fprintf(arq, ";\n");
+            _printDotRecursivo(arq, n->filhos[i], numSetores);
+        }
+    }
+}
+
+bool printDotRadialTree(RadialTree t, char *fn)
+{
+    FILE *arq = fopen(fn, "w");
+    if (arq == NULL)
+        return false;
+    struct arvore *arv = t;
+    fprintf(arq, "digraph G {\n");
+    fprintf(arq, "node [shape=box];\n");
+    fprintf(arq, "graph [rankdir=TB];\n");
+    fprintf(arq, "graph [center=true];\n");
+    fprintf(arq, "splines = false;\n");
+    fprintf(arq, "graph [bgcolor=white];\n");
+    _printDotRecursivo(arq, arv->raiz, arv->numSetores);
+    fprintf(arq, "}\n");
+    fclose(arq);
+    return true;
+}
+
+void killRadialTree(RadialTree t)
+{
+    struct arvore *arv = t;
+    free(arv);
 }
